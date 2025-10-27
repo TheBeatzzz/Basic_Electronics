@@ -679,7 +679,634 @@ void generateWave() {
   // Similar to previous examples
 }
 ```
+## Servo Motor Control
 
+Servo motors are commonly used for precise angular positioning. The ESP32 can control servos using PWM signals.
+
+### Hardware Setup:
+- **Servo Wire Colors:**
+  - Brown/Black: GND
+  - Red: VCC (4.8V - 6V)
+  - Orange/Yellow/White: Signal (PWM)
+
+- **Important:** Power servos from external 5V supply (not ESP32's 3.3V pin) for better performance
+- Connect grounds together (ESP32 GND and external power GND)
+
+### 13. Basic Servo Control
+
+```cpp
+#include <ESP32Servo.h>
+
+Servo myServo;
+#define SERVO_PIN 18
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Allow allocation of all timers for servo library
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  
+  myServo.attach(SERVO_PIN);  // Attach servo to pin 18
+  Serial.println("Servo Ready!");
+}
+
+void loop() {
+  // Sweep from 0 to 180 degrees
+  for (int angle = 0; angle <= 180; angle++) {
+    myServo.write(angle);
+    Serial.print("Angle: ");
+    Serial.println(angle);
+    delay(15);  // Wait for servo to reach position
+  }
+  
+  delay(1000);
+  
+  // Sweep from 180 to 0 degrees
+  for (int angle = 180; angle >= 0; angle--) {
+    myServo.write(angle);
+    Serial.print("Angle: ");
+    Serial.println(angle);
+    delay(15);
+  }
+  
+  delay(1000);
+}
+```
+
+### 14. Servo Control with Serial Commands
+
+```cpp
+#include <ESP32Servo.h>
+
+Servo myServo;
+#define SERVO_PIN 18
+
+void setup() {
+  Serial.begin(115200);
+  
+  ESP32PWM::allocateTimer(0);
+  myServo.attach(SERVO_PIN);
+  
+  Serial.println("=== ESP32 Servo Control ===");
+  Serial.println("Commands:");
+  Serial.println("  angle:<0-180> - Set specific angle");
+  Serial.println("  sweep - Sweep 0 to 180");
+  Serial.println("  center - Move to center (90°)");
+  Serial.println("  min - Move to minimum (0°)");
+  Serial.println("  max - Move to maximum (180°)");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    
+    if (command.startsWith("angle:")) {
+      int angle = command.substring(6).toInt();
+      angle = constrain(angle, 0, 180);
+      myServo.write(angle);
+      Serial.print("Moved to: ");
+      Serial.print(angle);
+      Serial.println("°");
+    }
+    else if (command == "sweep") {
+      Serial.println("Sweeping...");
+      for (int i = 0; i <= 180; i++) {
+        myServo.write(i);
+        delay(15);
+      }
+      for (int i = 180; i >= 0; i--) {
+        myServo.write(i);
+        delay(15);
+      }
+      Serial.println("Sweep complete");
+    }
+    else if (command == "center") {
+      myServo.write(90);
+      Serial.println("Moved to center (90°)");
+    }
+    else if (command == "min") {
+      myServo.write(0);
+      Serial.println("Moved to minimum (0°)");
+    }
+    else if (command == "max") {
+      myServo.write(180);
+      Serial.println("Moved to maximum (180°)");
+    }
+    else {
+      Serial.println("Unknown command");
+    }
+  }
+}
+```
+
+### 15. Multi-Servo Control
+
+```cpp
+#include <ESP32Servo.h>
+
+Servo servo1;
+Servo servo2;
+Servo servo3;
+
+#define SERVO1_PIN 18
+#define SERVO2_PIN 19
+#define SERVO3_PIN 21
+
+void setup() {
+  Serial.begin(115200);
+  
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  
+  servo1.attach(SERVO1_PIN);
+  servo2.attach(SERVO2_PIN);
+  servo3.attach(SERVO3_PIN);
+  
+  // Initialize all servos to center position
+  servo1.write(90);
+  servo2.write(90);
+  servo3.write(90);
+  
+  Serial.println("3-Servo Controller Ready");
+  Serial.println("Format: servo_number,angle (e.g., 1,90)");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    
+    int commaIndex = input.indexOf(',');
+    if (commaIndex > 0) {
+      int servoNum = input.substring(0, commaIndex).toInt();
+      int angle = input.substring(commaIndex + 1).toInt();
+      angle = constrain(angle, 0, 180);
+      
+      switch(servoNum) {
+        case 1:
+          servo1.write(angle);
+          Serial.print("Servo 1 -> ");
+          break;
+        case 2:
+          servo2.write(angle);
+          Serial.print("Servo 2 -> ");
+          break;
+        case 3:
+          servo3.write(angle);
+          Serial.print("Servo 3 -> ");
+          break;
+        default:
+          Serial.println("Invalid servo number (1-3)");
+          return;
+      }
+      Serial.print(angle);
+      Serial.println("°");
+    }
+  }
+}
+```
+
+### 16. Servo Control with Potentiometer
+
+```cpp
+#include <ESP32Servo.h>
+
+Servo myServo;
+#define SERVO_PIN 18
+#define POT_PIN 34  // Potentiometer on ADC1
+
+void setup() {
+  Serial.begin(115200);
+  
+  ESP32PWM::allocateTimer(0);
+  myServo.attach(SERVO_PIN);
+  pinMode(POT_PIN, INPUT);
+  
+  Serial.println("Servo controlled by potentiometer");
+}
+
+void loop() {
+  // Read potentiometer value (0-4095)
+  int potValue = analogRead(POT_PIN);
+  
+  // Map to servo angle (0-180)
+  int angle = map(potValue, 0, 4095, 0, 180);
+  
+  // Move servo
+  myServo.write(angle);
+  
+  // Print values
+  Serial.print("Pot: ");
+  Serial.print(potValue);
+  Serial.print(" | Angle: ");
+  Serial.println(angle);
+  
+  delay(15);  // Small delay for servo stability
+}
+```
+
+### 17. Servo Control with Buttons
+
+```cpp
+#include <ESP32Servo.h>
+
+Servo myServo;
+#define SERVO_PIN 18
+#define BUTTON_LEFT 4
+#define BUTTON_RIGHT 5
+#define BUTTON_CENTER 19
+
+int currentAngle = 90;
+int stepSize = 5;  // Degrees per button press
+
+void setup() {
+  Serial.begin(115200);
+  
+  ESP32PWM::allocateTimer(0);
+  myServo.attach(SERVO_PIN);
+  
+  pinMode(BUTTON_LEFT, INPUT_PULLUP);
+  pinMode(BUTTON_RIGHT, INPUT_PULLUP);
+  pinMode(BUTTON_CENTER, INPUT_PULLUP);
+  
+  myServo.write(currentAngle);
+  Serial.println("Servo Button Control");
+  Serial.println("Left: Decrease | Right: Increase | Center: Reset to 90°");
+}
+
+void loop() {
+  // Read buttons (active LOW)
+  bool leftPressed = (digitalRead(BUTTON_LEFT) == LOW);
+  bool rightPressed = (digitalRead(BUTTON_RIGHT) == LOW);
+  bool centerPressed = (digitalRead(BUTTON_CENTER) == LOW);
+  
+  if (leftPressed) {
+    currentAngle -= stepSize;
+    currentAngle = constrain(currentAngle, 0, 180);
+    myServo.write(currentAngle);
+    Serial.print("← Angle: ");
+    Serial.println(currentAngle);
+    delay(200);  // Debounce
+  }
+  
+  if (rightPressed) {
+    currentAngle += stepSize;
+    currentAngle = constrain(currentAngle, 0, 180);
+    myServo.write(currentAngle);
+    Serial.print("→ Angle: ");
+    Serial.println(currentAngle);
+    delay(200);  // Debounce
+  }
+  
+  if (centerPressed) {
+    currentAngle = 90;
+    myServo.write(currentAngle);
+    Serial.println("↺ Reset to 90°");
+    delay(200);  // Debounce
+  }
+}
+```
+
+### 18. Servo Control with Web Interface
+
+```cpp
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESP32Servo.h>
+
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+WebServer server(80);
+Servo myServo;
+
+#define SERVO_PIN 18
+int currentAngle = 90;
+
+void handleRoot() {
+  String html = R"(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title>ESP32 Servo Control</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin: 20px; }
+    h1 { color: #0066cc; }
+    .slider { width: 80%; max-width: 400px; }
+    .angle { font-size: 48px; color: #00aa00; margin: 20px; }
+    button { 
+      padding: 15px 30px; 
+      font-size: 18px; 
+      margin: 10px; 
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      background: #0066cc;
+      color: white;
+    }
+    button:hover { background: #0052a3; }
+  </style>
+</head>
+<body>
+  <h1>🎛️ ESP32 Servo Control</h1>
+  <div class='angle' id='angleDisplay'>90°</div>
+  <input type='range' min='0' max='180' value='90' class='slider' id='angleSlider'>
+  <br><br>
+  <button onclick='setAngle(0)'>0°</button>
+  <button onclick='setAngle(45)'>45°</button>
+  <button onclick='setAngle(90)'>90°</button>
+  <button onclick='setAngle(135)'>135°</button>
+  <button onclick='setAngle(180)'>180°</button>
+  
+  <script>
+    var slider = document.getElementById('angleSlider');
+    var display = document.getElementById('angleDisplay');
+    
+    slider.oninput = function() {
+      setAngle(this.value);
+    }
+    
+    function setAngle(angle) {
+      fetch('/servo?angle=' + angle)
+        .then(response => response.text())
+        .then(data => {
+          display.innerHTML = angle + '°';
+          slider.value = angle;
+        });
+    }
+  </script>
+</body>
+</html>
+  )";
+  server.send(200, "text/html", html);
+}
+
+void handleServo() {
+  if (server.hasArg("angle")) {
+    currentAngle = server.arg("angle").toInt();
+    currentAngle = constrain(currentAngle, 0, 180);
+    myServo.write(currentAngle);
+    server.send(200, "text/plain", "OK");
+    Serial.print("Servo moved to: ");
+    Serial.println(currentAngle);
+  } else {
+    server.send(400, "text/plain", "Missing angle parameter");
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Setup servo
+  ESP32PWM::allocateTimer(0);
+  myServo.attach(SERVO_PIN);
+  myServo.write(currentAngle);
+  
+  // Connect to Wi-Fi
+  Serial.println("Connecting to Wi-Fi...");
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("\nConnected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+  
+  // Setup web server
+  server.on("/", handleRoot);
+  server.on("/servo", handleServo);
+  server.begin();
+  
+  Serial.println("Web server started");
+  Serial.println("Open your browser and go to: http://" + WiFi.localIP().toString());
+}
+
+void loop() {
+  server.handleClient();
+}
+```
+
+### 19. Robotic Arm / Pan-Tilt Control
+
+```cpp
+#include <ESP32Servo.h>
+
+// Define servos
+Servo panServo;   // Horizontal rotation
+Servo tiltServo;  // Vertical tilt
+
+#define PAN_PIN 18
+#define TILT_PIN 19
+
+int panAngle = 90;
+int tiltAngle = 90;
+
+void setup() {
+  Serial.begin(115200);
+  
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  
+  panServo.attach(PAN_PIN);
+  tiltServo.attach(TILT_PIN);
+  
+  // Center both servos
+  panServo.write(panAngle);
+  tiltServo.write(tiltAngle);
+  
+  Serial.println("=== Pan-Tilt Control ===");
+  Serial.println("Commands:");
+  Serial.println("  w/s - Tilt up/down");
+  Serial.println("  a/d - Pan left/right");
+  Serial.println("  c - Center both");
+  Serial.println("  pan:<angle> - Set pan angle");
+  Serial.println("  tilt:<angle> - Set tilt angle");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    cmd.toLowerCase();
+    
+    if (cmd == "w") {
+      tiltAngle = constrain(tiltAngle + 5, 0, 180);
+      tiltServo.write(tiltAngle);
+      Serial.println("Tilt up: " + String(tiltAngle));
+    }
+    else if (cmd == "s") {
+      tiltAngle = constrain(tiltAngle - 5, 0, 180);
+      tiltServo.write(tiltAngle);
+      Serial.println("Tilt down: " + String(tiltAngle));
+    }
+    else if (cmd == "a") {
+      panAngle = constrain(panAngle - 5, 0, 180);
+      panServo.write(panAngle);
+      Serial.println("Pan left: " + String(panAngle));
+    }
+    else if (cmd == "d") {
+      panAngle = constrain(panAngle + 5, 0, 180);
+      panServo.write(panAngle);
+      Serial.println("Pan right: " + String(panAngle));
+    }
+    else if (cmd == "c") {
+      panAngle = 90;
+      tiltAngle = 90;
+      panServo.write(panAngle);
+      tiltServo.write(tiltAngle);
+      Serial.println("Centered: Pan=90°, Tilt=90°");
+    }
+    else if (cmd.startsWith("pan:")) {
+      panAngle = cmd.substring(4).toInt();
+      panAngle = constrain(panAngle, 0, 180);
+      panServo.write(panAngle);
+      Serial.println("Pan set to: " + String(panAngle));
+    }
+    else if (cmd.startsWith("tilt:")) {
+      tiltAngle = cmd.substring(5).toInt();
+      tiltAngle = constrain(tiltAngle, 0, 180);
+      tiltServo.write(tiltAngle);
+      Serial.println("Tilt set to: " + String(tiltAngle));
+    }
+    else {
+      Serial.println("Unknown command");
+    }
+  }
+}
+```
+
+### 20. Servo Choreography / Animation Sequences
+
+```cpp
+#include <ESP32Servo.h>
+
+Servo myServo;
+#define SERVO_PIN 18
+
+// Structure to hold animation steps
+struct AnimationStep {
+  int angle;
+  int delayMs;
+};
+
+// Define animation sequences
+AnimationStep waveAnimation[] = {
+  {90, 500}, {120, 300}, {90, 300}, {120, 300}, {90, 500}
+};
+
+AnimationStep scanAnimation[] = {
+  {0, 100}, {30, 100}, {60, 100}, {90, 100}, 
+  {120, 100}, {150, 100}, {180, 100}, {150, 100},
+  {120, 100}, {90, 100}, {60, 100}, {30, 100}, {0, 100}
+};
+
+AnimationStep nodAnimation[] = {
+  {90, 300}, {60, 400}, {90, 300}, {60, 400}, {90, 500}
+};
+
+void setup() {
+  Serial.begin(115200);
+  
+  ESP32PWM::allocateTimer(0);
+  myServo.attach(SERVO_PIN);
+  myServo.write(90);
+  
+  Serial.println("=== Servo Animation Controller ===");
+  Serial.println("Commands:");
+  Serial.println("  wave - Wave motion");
+  Serial.println("  scan - Scanning motion");
+  Serial.println("  nod - Nodding motion");
+  Serial.println("  loop - Continuous loop");
+}
+
+void playAnimation(AnimationStep animation[], int steps) {
+  for (int i = 0; i < steps; i++) {
+    myServo.write(animation[i].angle);
+    Serial.print("Step ");
+    Serial.print(i + 1);
+    Serial.print(": ");
+    Serial.print(animation[i].angle);
+    Serial.println("°");
+    delay(animation[i].delayMs);
+  }
+  Serial.println("Animation complete");
+}
+
+void loop() {
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    
+    if (cmd == "wave") {
+      Serial.println("Playing wave animation...");
+      playAnimation(waveAnimation, 5);
+    }
+    else if (cmd == "scan") {
+      Serial.println("Playing scan animation...");
+      playAnimation(scanAnimation, 13);
+    }
+    else if (cmd == "nod") {
+      Serial.println("Playing nod animation...");
+      playAnimation(nodAnimation, 5);
+    }
+    else if (cmd == "loop") {
+      Serial.println("Continuous loop mode (press any key to stop)");
+      while (!Serial.available()) {
+        playAnimation(waveAnimation, 5);
+        delay(500);
+      }
+      Serial.read();  // Clear buffer
+      Serial.println("Loop stopped");
+    }
+    else {
+      Serial.println("Unknown command");
+    }
+  }
+}
+```
+
+### Servo Motor Tips & Best Practices:
+
+**Power Supply:**
+- Use external 5V power supply (1A+ for standard servos)
+- Connect ESP32 GND to power supply GND (common ground)
+- Don't power servos from ESP32's 3.3V or 5V pins
+
+**Signal Connection:**
+- Servo signal wire connects to ESP32 GPIO (3.3V tolerant)
+- Most servos work fine with 3.3V logic signals
+- If issues occur, use a level shifter (3.3V → 5V)
+
+**PWM Settings:**
+- Standard servo: 50 Hz (20ms period)
+- Pulse width: 1ms (0°) to 2ms (180°)
+- ESP32Servo library handles this automatically
+
+**Calibration:**
+- Different servos may have slightly different ranges
+- Some servos: 500-2500 μs instead of standard 1000-2000 μs
+- Use `myServo.attach(pin, min, max)` for custom ranges
+
+**Common Issues:**
+1. **Servo jittering**: Add capacitor (100-470μF) across power supply
+2. **ESP32 resets**: Insufficient power supply current
+3. **Servo doesn't move**: Check wiring, especially ground connection
+4. **Servo buzzing at position**: Normal for most servos
+
+**Installing ESP32Servo Library:**
+1. Open Arduino IDE
+2. Go to **Sketch > Include Library > Manage Libraries**
+3. Search for "ESP32Servo"
+4. Install "ESP32Servo by Kevin Harrington"
 ---
 
 ## Important ESP32 GPIO Notes
@@ -717,6 +1344,142 @@ void generateWave() {
 ---
 
 ## Troubleshooting
+### Installing USB-to-Serial Drivers (CP2102 / CH340)
+
+Most ESP32 boards use either CP2102 or CH340 USB-to-serial chips. If your computer doesn't recognize the ESP32, you need to install the appropriate driver.
+
+#### How to Identify Which Driver You Need:
+
+1. **Check your ESP32 board** - Look for a small chip near the USB port
+   - If it says "CP2102" or "CP2104" → You need CP2102 drivers
+   - If it says "CH340G" or "CH340C" → You need CH340 drivers
+
+2. **Check Device Manager (Windows)**:
+   - Press `Win + X` and select "Device Manager"
+   - Look under "Ports (COM & LPT)" or "Other devices"
+   - If you see "CP210x" → CP2102 driver needed
+   - If you see "CH340" or "USB2.0-Serial" → CH340 driver needed
+   - If you see a device with a yellow warning icon → Driver needed
+
+#### Installing CP2102 Drivers:
+
+**Windows:**
+1. Download from: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+2. Click "Downloads" tab
+3. Download "CP210x Universal Windows Driver"
+4. Extract the ZIP file
+5. Run `CP210xVCPInstaller_x64.exe` (or x86 for 32-bit Windows)
+6. Follow the installation wizard
+7. Restart your computer
+8. Reconnect ESP32 - should now appear as COM port
+
+**macOS:**
+1. Download from: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
+2. Download "CP210x VCP Mac OSX Driver"
+3. Open the .dmg file
+4. Run the installer package
+5. Go to System Preferences → Security & Privacy
+6. Click "Allow" if installation was blocked
+7. Restart your Mac
+8. Reconnect ESP32
+
+**Linux:**
+- Most Linux distributions include CP210x drivers by default
+- Check with: `lsmod | grep cp210x`
+- If needed, run: `sudo modprobe cp210x`
+- Add user to dialout group: `sudo usermod -a -G dialout $USER`
+- Log out and log back in
+
+#### Installing CH340 Drivers:
+
+**Windows:**
+1. Download from: http://www.wch-ic.com/downloads/CH341SER_EXE.html
+2. Or use this direct link: http://www.wch.cn/downloads/CH341SER_EXE.html
+3. Extract the ZIP file
+4. Run `CH341SER.EXE`
+5. Click "Install" button
+6. Wait for "Driver installed successfully" message
+7. Restart your computer
+8. Reconnect ESP32
+
+**Alternative Windows Method:**
+1. Download from SparkFun: https://learn.sparkfun.com/tutorials/how-to-install-ch340-drivers/all
+2. Follow their detailed guide
+
+**macOS:**
+1. Download from: https://github.com/adrianmihalko/ch340g-ch34g-ch34x-mac-os-x-driver
+2. Download the latest `.pkg` file
+3. Open the .pkg file
+4. Follow installation instructions
+5. **Important for macOS Catalina and later:**
+   - Go to System Preferences → Security & Privacy
+   - Click the lock to make changes
+   - Click "Allow" next to the blocked extension
+6. Restart your Mac
+7. Reconnect ESP32
+
+**Linux:**
+1. CH340 drivers are usually built into the kernel (kernel 2.6.24 or later)
+2. Check with: `lsmod | grep ch34x`
+3. If not loaded: `sudo modprobe ch341`
+4. Add user to dialout group: `sudo usermod -a -G dialout $USER`
+5. Log out and log back in
+
+#### Verifying Driver Installation:
+
+**Windows:**
+1. Open Device Manager (`Win + X` → Device Manager)
+2. Expand "Ports (COM & LPT)"
+3. Look for "Silicon Labs CP210x USB to UART Bridge (COM#)" or "USB-SERIAL CH340 (COM#)"
+4. Note the COM port number (e.g., COM3, COM4)
+
+**macOS:**
+1. Open Terminal
+2. Type: `ls /dev/cu.*`
+3. Look for `/dev/cu.usbserial-####` (CP2102) or `/dev/cu.wchusbserial####` (CH340)
+
+**Linux:**
+1. Open Terminal
+2. Type: `ls /dev/ttyUSB*` or `dmesg | grep tty`
+3. Look for `/dev/ttyUSB0` or similar
+
+#### Configuring Arduino IDE:
+
+After driver installation:
+1. Restart Arduino IDE
+2. Go to **Tools → Port**
+3. Select the COM port (Windows) or /dev/cu.* (macOS) or /dev/ttyUSB* (Linux)
+4. If port doesn't appear:
+   - Try a different USB cable (some cables are power-only)
+   - Try a different USB port
+   - Restart computer
+
+#### Common Driver Issues:
+
+**Issue: "Port is not available" or "Access Denied"**
+- **Windows**: Close any Serial Monitor or other programs using the port
+- **macOS/Linux**: Grant permissions with `sudo chmod 666 /dev/ttyUSB0` (adjust port name)
+- **Linux**: Add user to dialout group (see Linux instructions above)
+
+**Issue: Driver won't install on macOS**
+- Disable System Integrity Protection (SIP) temporarily
+- Go to Recovery Mode (Restart + Cmd+R)
+- Open Terminal in Recovery Mode
+- Run: `csrutil disable`
+- Restart and install driver
+- Re-enable SIP: Boot to Recovery, run `csrutil enable`
+
+**Issue: Multiple drivers causing conflicts**
+- Uninstall all USB-serial drivers
+- Restart computer
+- Install only the driver you need
+
+**Issue: "Device not recognized" on Windows**
+- Try different USB ports (USB 2.0 ports work better than 3.0 sometimes)
+- Update Windows USB drivers
+- Check USB cable (use data cable, not charging-only cable)
+
+---
 
 ### Can't Upload Code:
 1. Hold the **BOOT** button while uploading
@@ -804,3 +1567,4 @@ void generateWave() {
 ---
 
 Good luck with your ESP32 journey! Start with simple examples and gradually move to more complex projects. 🚀
+
