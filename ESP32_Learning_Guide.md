@@ -285,6 +285,403 @@ void loop() {
 
 ---
 
+## ESP32 Function Generator
+
+The ESP32 can be used as a function generator to create various waveforms using its DAC (Digital to Analog Converter) or PWM outputs.
+
+### 9. Simple Function Generator with DAC
+
+```cpp
+// ESP32 has 2 DAC pins: GPIO 25 (DAC1) and GPIO 26 (DAC2)
+#define DAC_PIN 25
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  // Generate sine wave
+  for (int i = 0; i < 360; i++) {
+    float radians = i * PI / 180.0;
+    int value = (sin(radians) + 1) * 127.5;  // Scale to 0-255
+    dacWrite(DAC_PIN, value);
+    delayMicroseconds(100);  // Controls frequency
+  }
+}
+```
+
+### 10. Multi-Waveform Function Generator
+
+```cpp
+#define DAC_PIN 25
+#define BUTTON_PIN 4  // Button to switch waveforms
+
+enum WaveType { SINE, SQUARE, TRIANGLE, SAWTOOTH };
+WaveType currentWave = SINE;
+int frequency = 100;  // Hz
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  Serial.println("Function Generator Started");
+  Serial.println("Press button to change waveform");
+}
+
+void generateSine() {
+  for (int i = 0; i < 360; i++) {
+    float radians = i * PI / 180.0;
+    int value = (sin(radians) + 1) * 127.5;
+    dacWrite(DAC_PIN, value);
+    delayMicroseconds(1000000 / (frequency * 360));
+  }
+}
+
+void generateSquare() {
+  int halfPeriod = 500000 / frequency;  // microseconds
+  dacWrite(DAC_PIN, 255);
+  delayMicroseconds(halfPeriod);
+  dacWrite(DAC_PIN, 0);
+  delayMicroseconds(halfPeriod);
+}
+
+void generateTriangle() {
+  // Rising edge
+  for (int i = 0; i <= 255; i++) {
+    dacWrite(DAC_PIN, i);
+    delayMicroseconds(1000000 / (frequency * 512));
+  }
+  // Falling edge
+  for (int i = 255; i >= 0; i--) {
+    dacWrite(DAC_PIN, i);
+    delayMicroseconds(1000000 / (frequency * 512));
+  }
+}
+
+void generateSawtooth() {
+  for (int i = 0; i <= 255; i++) {
+    dacWrite(DAC_PIN, i);
+    delayMicroseconds(1000000 / (frequency * 256));
+  }
+  dacWrite(DAC_PIN, 0);
+}
+
+void loop() {
+  // Check button press to change waveform
+  static bool lastButtonState = HIGH;
+  bool buttonState = digitalRead(BUTTON_PIN);
+  
+  if (buttonState == LOW && lastButtonState == HIGH) {
+    currentWave = (WaveType)((currentWave + 1) % 4);
+    
+    switch(currentWave) {
+      case SINE: Serial.println("Waveform: SINE"); break;
+      case SQUARE: Serial.println("Waveform: SQUARE"); break;
+      case TRIANGLE: Serial.println("Waveform: TRIANGLE"); break;
+      case SAWTOOTH: Serial.println("Waveform: SAWTOOTH"); break;
+    }
+    delay(200);  // Debounce
+  }
+  lastButtonState = buttonState;
+  
+  // Generate selected waveform
+  switch(currentWave) {
+    case SINE:
+      generateSine();
+      break;
+    case SQUARE:
+      generateSquare();
+      break;
+    case TRIANGLE:
+      generateTriangle();
+      break;
+    case SAWTOOTH:
+      generateSawtooth();
+      break;
+  }
+}
+```
+
+### 11. Function Generator with Serial Control
+
+```cpp
+#define DAC_PIN 25
+
+String waveform = "sine";
+int frequency = 100;
+int amplitude = 255;  // 0-255 for DAC
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n=== ESP32 Function Generator ===");
+  Serial.println("Commands:");
+  Serial.println("  wave:sine|square|triangle|sawtooth");
+  Serial.println("  freq:100 (in Hz, 1-10000)");
+  Serial.println("  amp:255 (0-255)");
+  Serial.println("  start|stop");
+}
+
+bool running = true;
+
+void loop() {
+  // Check for serial commands
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    
+    if (cmd.startsWith("wave:")) {
+      waveform = cmd.substring(5);
+      Serial.println("Waveform set to: " + waveform);
+    }
+    else if (cmd.startsWith("freq:")) {
+      frequency = cmd.substring(5).toInt();
+      frequency = constrain(frequency, 1, 10000);
+      Serial.println("Frequency set to: " + String(frequency) + " Hz");
+    }
+    else if (cmd.startsWith("amp:")) {
+      amplitude = cmd.substring(4).toInt();
+      amplitude = constrain(amplitude, 0, 255);
+      Serial.println("Amplitude set to: " + String(amplitude));
+    }
+    else if (cmd == "start") {
+      running = true;
+      Serial.println("Started");
+    }
+    else if (cmd == "stop") {
+      running = false;
+      dacWrite(DAC_PIN, 0);
+      Serial.println("Stopped");
+    }
+  }
+  
+  if (running) {
+    if (waveform == "sine") {
+      generateSineWave();
+    } else if (waveform == "square") {
+      generateSquareWave();
+    } else if (waveform == "triangle") {
+      generateTriangleWave();
+    } else if (waveform == "sawtooth") {
+      generateSawtoothWave();
+    }
+  }
+}
+
+void generateSineWave() {
+  for (int i = 0; i < 360; i++) {
+    float radians = i * PI / 180.0;
+    int value = ((sin(radians) + 1) * amplitude) / 2;
+    dacWrite(DAC_PIN, value);
+    delayMicroseconds(1000000 / (frequency * 360));
+    
+    if (Serial.available()) break;  // Check for new commands
+  }
+}
+
+void generateSquareWave() {
+  int halfPeriod = 500000 / frequency;
+  dacWrite(DAC_PIN, amplitude);
+  delayMicroseconds(halfPeriod);
+  dacWrite(DAC_PIN, 0);
+  delayMicroseconds(halfPeriod);
+}
+
+void generateTriangleWave() {
+  int steps = 256;
+  int delayTime = 1000000 / (frequency * steps * 2);
+  
+  for (int i = 0; i <= steps; i++) {
+    dacWrite(DAC_PIN, (i * amplitude) / steps);
+    delayMicroseconds(delayTime);
+    if (Serial.available()) break;
+  }
+  
+  for (int i = steps; i >= 0; i--) {
+    dacWrite(DAC_PIN, (i * amplitude) / steps);
+    delayMicroseconds(delayTime);
+    if (Serial.available()) break;
+  }
+}
+
+void generateSawtoothWave() {
+  int steps = 256;
+  int delayTime = 1000000 / (frequency * steps);
+  
+  for (int i = 0; i <= steps; i++) {
+    dacWrite(DAC_PIN, (i * amplitude) / steps);
+    delayMicroseconds(delayTime);
+    if (Serial.available()) break;
+  }
+  dacWrite(DAC_PIN, 0);
+}
+```
+
+### 12. High-Frequency PWM Function Generator
+
+For higher frequencies, use PWM instead of DAC:
+
+```cpp
+#define PWM_PIN 2
+#define PWM_CHANNEL 0
+#define PWM_FREQUENCY 50000  // 50 kHz PWM frequency
+#define PWM_RESOLUTION 8     // 8-bit resolution
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Setup PWM
+  ledcSetup(PWM_CHANNEL, PWM_FREQUENCY, PWM_RESOLUTION);
+  ledcAttachPin(PWM_PIN, PWM_CHANNEL);
+  
+  Serial.println("High-frequency PWM generator ready");
+}
+
+void loop() {
+  // Generate a 1 kHz sine wave using PWM
+  for (int i = 0; i < 360; i++) {
+    float radians = i * PI / 180.0;
+    int dutyCycle = (sin(radians) + 1) * 127.5;
+    ledcWrite(PWM_CHANNEL, dutyCycle);
+    delayMicroseconds(2778);  // 1 kHz = 1000 us per cycle, 360 steps
+  }
+}
+```
+
+### Function Generator Specifications:
+
+**Using DAC (GPIO 25, 26):**
+- Output voltage: 0 - 3.3V
+- Resolution: 8-bit (256 levels)
+- Maximum practical frequency: ~10 kHz
+- Output impedance: ~1kΩ
+- Best for: Audio signals, low-frequency signals
+
+**Using PWM:**
+- Output: Digital pulses (requires low-pass filter for analog)
+- PWM frequency: Up to 40 MHz
+- Resolution: 1-16 bit (configurable)
+- Best for: Motor control, LED dimming, high-frequency signals
+
+### Adding a Low-Pass Filter:
+
+For cleaner analog output from PWM, add a simple RC low-pass filter:
+
+```
+PWM Pin ----[10kΩ]---- Output
+                |
+              [1µF]
+                |
+               GND
+```
+
+Cutoff frequency = 1 / (2π × R × C) ≈ 15.9 Hz
+
+For different frequencies, adjust R and C values:
+- **1 kHz cutoff**: R=1.6kΩ, C=0.1µF
+- **10 kHz cutoff**: R=1.6kΩ, C=0.01µF
+
+### Function Generator Project Enhancements:
+
+1. **OLED Display**: Show current waveform, frequency, and amplitude
+2. **Rotary Encoder**: Adjust frequency and amplitude
+3. **Multiple Outputs**: Use both DAC channels for dual output
+4. **Web Interface**: Control via Wi-Fi
+5. **Sweep Mode**: Frequency sweep from start to end
+6. **Modulation**: AM/FM modulation capabilities
+7. **Preset Storage**: Save and recall settings
+
+### Example: Function Generator with OLED Display
+
+```cpp
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+#define DAC_PIN 25
+#define BUTTON_WAVE 4
+#define BUTTON_FREQ_UP 5
+#define BUTTON_FREQ_DOWN 18
+
+int waveType = 0;  // 0=sine, 1=square, 2=triangle, 3=sawtooth
+int frequency = 100;
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(BUTTON_WAVE, INPUT_PULLUP);
+  pinMode(BUTTON_FREQ_UP, INPUT_PULLUP);
+  pinMode(BUTTON_FREQ_DOWN, INPUT_PULLUP);
+  
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 allocation failed");
+  }
+  
+  updateDisplay();
+}
+
+void updateDisplay() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  
+  display.setCursor(0, 0);
+  display.println("Function Generator");
+  
+  display.setCursor(0, 20);
+  display.print("Wave: ");
+  switch(waveType) {
+    case 0: display.println("Sine"); break;
+    case 1: display.println("Square"); break;
+    case 2: display.println("Triangle"); break;
+    case 3: display.println("Sawtooth"); break;
+  }
+  
+  display.setCursor(0, 35);
+  display.print("Freq: ");
+  display.print(frequency);
+  display.println(" Hz");
+  
+  display.display();
+}
+
+void loop() {
+  // Button handling
+  if (digitalRead(BUTTON_WAVE) == LOW) {
+    waveType = (waveType + 1) % 4;
+    updateDisplay();
+    delay(200);
+  }
+  
+  if (digitalRead(BUTTON_FREQ_UP) == LOW) {
+    frequency += 10;
+    if (frequency > 1000) frequency = 1000;
+    updateDisplay();
+    delay(100);
+  }
+  
+  if (digitalRead(BUTTON_FREQ_DOWN) == LOW) {
+    frequency -= 10;
+    if (frequency < 10) frequency = 10;
+    updateDisplay();
+    delay(100);
+  }
+  
+  // Generate waveform (simplified for example)
+  generateWave();
+}
+
+void generateWave() {
+  // Add your waveform generation code here
+  // Similar to previous examples
+}
+```
+
+---
+
 ## Important ESP32 GPIO Notes
 
 ### ADC (Analog Input) Pins:
